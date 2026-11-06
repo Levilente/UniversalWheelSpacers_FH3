@@ -4,12 +4,14 @@
 // Stage 0 is stock (fitted on every car by default), the other stages are +1 cm, +2 cm, ... per wheel
 // for 300 CR each. The stage is stored per owned car (garage id) by the platform's upgrade bridge.
 //
-// How the track width is changed: when the game builds a car's data object (function game+0x189F020) it reads
-// the car's row of the database table CarTrackOffsets and stores FrontOffset, RearOffset, UpgradeFrontOffset and
-// UpgradeRearOffset (metres) at +0x773C, +0x7740, +0x7744 and +0x7748 of that object. This mod hooks the first
-// instruction after those four stores (game+0x189F8B8) and adds the spacer width to them.
+// How the track width is changed: the game builds a car's data object from the database. The function that loads
+// the car body (Data_CarBody) stores ModelFrontTrackOuter / ModelRearTrackOuter (metres, outer edge of one tire to
+// the outer edge of the other) at +0x234 / +0x238 of the object and then hands the body data to the car's physics
+// (game+0x18BADED is the first instruction after both stores). This mod adds twice the spacer width there, which is
+// also what makes a widebody kit's wheels jump out. A second, older approach (the four CarTrackOffsets values stored by
+// game+0x189F020) is still here, off by default, because the game doesn't seem to use those values for the wheels.
 //
-// Status: first version, written from reading the game's code. The log lines show every step.
+// Status: written from reading the game's code; the log lines show every step.
 #include "fh3mod.h"
 
 #include <windows.h>
@@ -17,21 +19,29 @@
 #include <atomic>
 #include <cstdarg>
 #include <cstdio>
-#include <cwchar>
 #include <cstdlib>
 #include <cstring>
+#include <cwchar>
 #include <string>
 #include <vector>
 
 namespace {
 
-constexpr int kStages            = 10;      // stage 0 (stock) + 1..9 cm: the upgrade bridge allows 10 stages at most
-constexpr int kPrice             = 300;     // credits per spacer stage
-constexpr uint32_t kHookRva      = 0x189F8B8;   // `mov rcx, [rdi+0x71E8]`, right after the four track offset stores
-constexpr size_t kOffFront       = 0x773C;  // FrontOffset, RearOffset, UpgradeFrontOffset, UpgradeRearOffset (4 floats)
-constexpr size_t kOffModelInfo   = 0x110;   // car -> record whose +0x30 is the car's model id (Data_Car.Id)
-constexpr size_t kOffModelId     = 0x30;
-const unsigned char kHookBytes[] = {0x48, 0x8B, 0x8F, 0xE8, 0x71, 0x00, 0x00};
+constexpr int kStages          = 10;   // stage 0 (stock) + 1..9 cm: the upgrade bridge allows 10 stages at most
+constexpr int kPrice           = 300;  // credits per spacer stage
+constexpr size_t kOffModelInfo = 0x110;  // car -> record whose +0x30 is the car's model id (Data_Car.Id)
+constexpr size_t kOffModelId   = 0x30;
+
+// Body hook: `mov rcx, [rsi+0x71E8]`, right after ModelFrontTrackOuter / ModelRearTrackOuter are stored.
+constexpr uint32_t kBodyRva      = 0x18BADED;
+constexpr size_t kOffBodyFront   = 0x234;
+constexpr size_t kOffBodyRear    = 0x238;
+const unsigned char kBodyBytes[] = {0x48, 0x8B, 0x8E, 0xE8, 0x71, 0x00, 0x00};
+
+// Offsets hook: `mov rcx, [rdi+0x71E8]`, right after FrontOffset, RearOffset, UpgradeFrontOffset, UpgradeRearOffset.
+constexpr uint32_t kOffsetsRva      = 0x189F8B8;
+constexpr size_t kOffOffsets        = 0x773C;
+const unsigned char kOffsetsBytes[] = {0x48, 0x8B, 0x8F, 0xE8, 0x71, 0x00, 0x00};
 
 const FH3ModApi* g_api = nullptr;
 FH3Mod* g_mod          = nullptr;
@@ -39,10 +49,10 @@ int g_front            = -1;
 int g_rear             = -1;
 
 // fh3-mods\WheelSpacers.ini (written with these defaults on first start).
-float g_scale     = 1.0f;   // multiplies the offset; -1 turns the wheels the other way if they move inwards
-bool g_apply_stock = true;  // add to FrontOffset / RearOffset
-bool g_apply_upgr  = true;  // add to UpgradeFrontOffset / UpgradeRearOffset
-bool g_verbose     = true;  // log every car the game builds (the first 60) and every change
+float g_scale       = 1.0f;   // multiplies the spacer width; -1 turns the wheels the other way if they move inwards
+bool g_apply_body   = true;   // add 2 x width to ModelFrontTrackOuter / ModelRearTrackOuter
+bool g_apply_offs   = false;  // add the width to the four CarTrackOffsets values as well
+bool g_verbose      = true;   // log every car the game builds (the first 80) and every change
 
 std::atomic<int> g_calls{0};
 std::wstring g_cfg_path, g_platform_ini;
@@ -51,7 +61,7 @@ std::vector<std::wstring> g_names[2], g_descs[2];
 FH3UpgradeStage g_stage_defs[2][kStages];
 
 void say(const char* fmt, ...) {
-    char line[300];
+    char line[320];
     va_list ap;
     va_start(ap, fmt);
     std::vsnprintf(line, sizeof line, fmt, ap);
@@ -61,8 +71,8 @@ void say(const char* fmt, ...) {
 
 std::wstring wnum(long long v) { return std::to_wstring(v); }
 
-// The platform keeps "stage|owned mask|model id" per garage id in its own ini; the model id is what lets this mod
-// tell the player's car from other cars of the same build.
+// The platform keeps "stage|owned mask|model number" per garage id in its own ini; the model number is what lets this
+// mod tell the player's car from other cars the game builds.
 int stored_model(const wchar_t* section, uint32_t garage) {
     wchar_t buf[96] = L"";
     GetPrivateProfileStringW(section, wnum(garage).c_str(), L"", buf, 96, g_platform_ini.c_str());
@@ -74,78 +84,110 @@ int stored_model(const wchar_t* section, uint32_t garage) {
 void load_config() {
     wchar_t buf[64] = L"";
     GetPrivateProfileStringW(L"WheelSpacers", L"Scale", L"", buf, 64, g_cfg_path.c_str());
-    if (!buf[0]) {   // first start: write the defaults so the file is there to edit
-        WritePrivateProfileStringW(L"WheelSpacers", L"Scale", L"1.0", g_cfg_path.c_str());
-        WritePrivateProfileStringW(L"WheelSpacers", L"ApplyStock", L"1", g_cfg_path.c_str());
-        WritePrivateProfileStringW(L"WheelSpacers", L"ApplyUpgrade", L"1", g_cfg_path.c_str());
-        WritePrivateProfileStringW(L"WheelSpacers", L"Log", L"1", g_cfg_path.c_str());
-        return;
+    if (buf[0]) g_scale = static_cast<float>(std::wcstod(buf, nullptr));
+    else WritePrivateProfileStringW(L"WheelSpacers", L"Scale", L"1.0", g_cfg_path.c_str());
+    const struct { const wchar_t* key; bool* value; int def; } flags[] = {
+        {L"ApplyBody", &g_apply_body, 1}, {L"ApplyOffsets", &g_apply_offs, 0}, {L"Log", &g_verbose, 1}};
+    for (const auto& f : flags) {
+        GetPrivateProfileStringW(L"WheelSpacers", f.key, L"", buf, 64, g_cfg_path.c_str());
+        if (buf[0]) *f.value = std::wcstol(buf, nullptr, 10) != 0;
+        else WritePrivateProfileStringW(L"WheelSpacers", f.key, f.def ? L"1" : L"0", g_cfg_path.c_str());
     }
-    g_scale        = static_cast<float>(std::wcstod(buf, nullptr));
-    g_apply_stock = GetPrivateProfileIntW(L"WheelSpacers", L"ApplyStock", 1, g_cfg_path.c_str()) != 0;
-    g_apply_upgr  = GetPrivateProfileIntW(L"WheelSpacers", L"ApplyUpgrade", 1, g_cfg_path.c_str()) != 0;
-    g_verbose     = GetPrivateProfileIntW(L"WheelSpacers", L"Log", 1, g_cfg_path.c_str()) != 0;
 }
 
 void on_stage(void* user, uint32_t garage, int stage) {
     if (g_verbose) say("%s spacers: garage %u now has stage %d (+%d cm)", user ? "rear" : "front", garage, stage, stage);
 }
 
-// Runs on the game's thread every time the game builds a car's data object, before `mov rcx, [rdi+0x71E8]`.
-// rdi is that object, and the four track offsets (floats, metres) are already stored in it.
-void on_car_built(FH3Context* ctx, void*) {
-    char* car = reinterpret_cast<char*>(ctx->rdi);
+// The car being built is the player's when its model matches the one the platform recorded for the driven garage id
+// (the platform stores 2154, the game's car data holds Data_Car.Id = 2154002). Returns the car's model id, 0 if the
+// object couldn't be read; sets the fitted front and rear stages (0 for any other car).
+int driven_stages(const char* car, const char* what, int* fs, int* rs) {
     int model = 0;
     __try {
         const char* info = *reinterpret_cast<char* const*>(car + kOffModelInfo);
         model            = *reinterpret_cast<const int*>(info + kOffModelId);
     } __except (EXCEPTION_EXECUTE_HANDLER) {
-        return;
+        return 0;
     }
-    const int n          = g_calls.fetch_add(1) + 1;
+    *fs = *rs = 0;
+    const int n           = g_calls.fetch_add(1) + 1;
     const uint32_t garage = g_api->upgrade_active_garage();
-    int fs = 0, rs = 0;
     if (garage) {
-        fs = g_api->upgrade_stage(g_mod, g_front, static_cast<int32_t>(garage));
-        rs = g_api->upgrade_stage(g_mod, g_rear, static_cast<int32_t>(garage));
-        // Only the player's car: the model id the platform recorded for that garage id has to match this car's.
-        // The platform stores the model number (2154), the game's car data holds Data_Car.Id (2154002 = model * 1000 + variant).
-        const int m = fs > 0 ? stored_model(L"car.wheelspacers.front", garage) : rs > 0 ? stored_model(L"car.wheelspacers.rear", garage) : 0;
+        *fs = g_api->upgrade_stage(g_mod, g_front, static_cast<int32_t>(garage));
+        *rs = g_api->upgrade_stage(g_mod, g_rear, static_cast<int32_t>(garage));
+        const int m = *fs > 0 ? stored_model(L"car.wheelspacers.front", garage) : *rs > 0 ? stored_model(L"car.wheelspacers.rear", garage) : 0;
         if (m > 0 && m != model && m != model / 1000) {
-            if (g_verbose && n <= 60) say("car built: object %p, model %d: not the driven car (garage %u is model %d), left alone", car, model, garage, m);
-            fs = rs = 0;
+            if (g_verbose && n <= 80) say("%s: object %p, model %d: not the driven car (garage %u is model %d), left alone", what, car, model, garage, m);
+            *fs = *rs = 0;
+        } else if (g_verbose && n <= 80 && !*fs && !*rs) {
+            say("%s: object %p, model %d, driven garage %u: no spacers", what, car, model, garage);
         }
     }
-    const float fd = fs * 0.01f * g_scale, rd = rs * 0.01f * g_scale;
-    if (fd == 0.0f && rd == 0.0f) {
-        if (g_verbose && n <= 60) say("car built: object %p, model %d, driven garage %u: no spacers", car, model, garage);
-        return;
-    }
-    float before[4] = {}, after[4] = {};
+    return model;
+}
+
+// Runs on the game's thread every time the game loads a car's body data. rsi is the car object.
+void on_body_built(FH3Context* ctx, void*) {
+    const char* car = reinterpret_cast<const char*>(ctx->rsi);
+    int fs, rs;
+    const int model = driven_stages(car, "body", &fs, &rs);
+    if (!model || (!fs && !rs)) return;
+    if (!g_apply_body) return;
+    float before[2] = {}, after[2] = {};
     __try {
-        float* f = reinterpret_cast<float*>(car + kOffFront);
-        std::memcpy(before, f, sizeof before);
-        if (g_apply_stock) { f[0] += fd; f[1] += rd; }
-        if (g_apply_upgr)  { f[2] += fd; f[3] += rd; }
-        std::memcpy(after, f, sizeof after);
+        float* f = reinterpret_cast<float*>(const_cast<char*>(car) + kOffBodyFront);
+        float* r = reinterpret_cast<float*>(const_cast<char*>(car) + kOffBodyRear);
+        before[0] = *f;
+        before[1] = *r;
+        *f += 2.0f * fs * 0.01f * g_scale;
+        *r += 2.0f * rs * 0.01f * g_scale;
+        after[0] = *f;
+        after[1] = *r;
     } __except (EXCEPTION_EXECUTE_HANDLER) {
         return;
     }
     if (g_verbose)
-        say("car built: object %p, model %d, garage %u: front +%d cm, rear +%d cm; offsets %.4f %.4f %.4f %.4f -> %.4f %.4f %.4f %.4f",
-            car, model, garage, fs, rs, before[0], before[1], before[2], before[3], after[0], after[1], after[2], after[3]);
+        say("body: object %p, model %d: front +%d cm, rear +%d cm; track outer front %.4f -> %.4f, rear %.4f -> %.4f", car, model, fs, rs,
+            before[0], after[0], before[1], after[1]);
 }
 
-DWORD WINAPI install_hook(LPVOID) {
-    char* game = static_cast<char*>(g_api->wait_for_code(0xFFFFFFFFu));
-    if (!game) { say("the game's code never became ready: no hook"); return 0; }
-    if (std::memcmp(game + kHookRva, kHookBytes, sizeof kHookBytes) != 0) {
-        say("game+0x%X isn't the code this mod was written for (another game build?): not hooked", kHookRva);
-        return 0;
+// Runs every time the game stores a car's four CarTrackOffsets values. rdi is the car object.
+void on_offsets_built(FH3Context* ctx, void*) {
+    if (!g_apply_offs) return;
+    const char* car = reinterpret_cast<const char*>(ctx->rdi);
+    int fs, rs;
+    const int model = driven_stages(car, "offsets", &fs, &rs);
+    if (!model || (!fs && !rs)) return;
+    const float fd = fs * 0.01f * g_scale, rd = rs * 0.01f * g_scale;
+    __try {
+        float* f = reinterpret_cast<float*>(const_cast<char*>(car) + kOffOffsets);
+        f[0] += fd; f[1] += rd; f[2] += fd; f[3] += rd;
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+        return;
     }
-    FH3Hook* h = g_api->hook_instruction(g_mod, "Car data built (track offsets)", game + kHookRva, &on_car_built, nullptr);
-    if (h && g_api->enable_hooks(g_mod, h)) say("hooked game+0x%X: spacers are added to the track offsets", kHookRva);
-    else say("couldn't hook game+0x%X (see the platform's lines above)", kHookRva);
+    if (g_verbose) say("offsets: object %p, model %d: front +%d cm, rear +%d cm added to the four CarTrackOffsets values", car, model, fs, rs);
+}
+
+bool hook_at(char* game, uint32_t rva, const unsigned char* bytes, size_t n, const char* name, FH3InstructionFn fn) {
+    if (std::memcmp(game + rva, bytes, n) != 0) {
+        say("game+0x%X isn't the code this mod was written for (another game build?): %s not hooked", rva, name);
+        return false;
+    }
+    FH3Hook* h = g_api->hook_instruction(g_mod, name, game + rva, fn, nullptr);
+    if (h && g_api->enable_hooks(g_mod, h)) {
+        say("hooked game+0x%X (%s)", rva, name);
+        return true;
+    }
+    say("couldn't hook game+0x%X (%s); see the platform's lines above", rva, name);
+    return false;
+}
+
+DWORD WINAPI install_hooks(LPVOID) {
+    char* game = static_cast<char*>(g_api->wait_for_code(0xFFFFFFFFu));
+    if (!game) { say("the game's code never became ready: no hooks"); return 0; }
+    hook_at(game, kBodyRva, kBodyBytes, sizeof kBodyBytes, "Car body built (track outer)", &on_body_built);
+    hook_at(game, kOffsetsRva, kOffsetsBytes, sizeof kOffsetsBytes, "Car data built (track offsets)", &on_offsets_built);
     return 0;
 }
 
@@ -198,10 +240,9 @@ FH3MOD_EXPORT int fh3mod_init(const FH3ModApi* api) {
 
     g_front = add_upgrade(0);
     g_rear  = add_upgrade(1);
-    say("registered: front handle %d, rear handle %d (scale %.2f, stock offsets %d, upgrade offsets %d)", g_front, g_rear,
-        g_scale, g_apply_stock, g_apply_upgr);
+    say("registered: front handle %d, rear handle %d (scale %.2f, body %d, offsets %d)", g_front, g_rear, g_scale, g_apply_body, g_apply_offs);
     if (g_front < 0 || g_rear < 0) return 1;
 
-    if (HANDLE t = CreateThread(nullptr, 0, install_hook, nullptr, 0, nullptr)) CloseHandle(t);
+    if (HANDLE t = CreateThread(nullptr, 0, install_hooks, nullptr, 0, nullptr)) CloseHandle(t);
     return 0;
 }
