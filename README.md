@@ -28,6 +28,7 @@ Copy `WheelSpacers.dll` into the `fh3-mods` folder next to `azimuth.exe`. On the
 | `ApplyBody` | `1` | Add twice the spacer width to the car body's `ModelFrontTrackOuter` / `ModelRearTrackOuter` (this is what moves the wheels). |
 | `ApplyOffsets` | `0` | Also add the width to the four `CarTrackOffsets` values (the game doesn't seem to use them for the wheels). |
 | `Log` | `1` | Log every car the game builds to `fh3-mods\platform.log`. |
+| `Trace` | `1` | Diagnostics for the shop preview work: logs SQL statements about upgrades, the shop's A / add steps and the game's call stack for every car it builds (capped). |
 
 ## How it works
 

@@ -70,7 +70,7 @@ std::vector<std::wstring> g_names[2], g_descs[2];
 FH3UpgradeStage g_stage_defs[2][kStages];
 
 void say(const char* fmt, ...) {
-    char line[320];
+    char line[700];
     va_list ap;
     va_start(ap, fmt);
     std::vsnprintf(line, sizeof line, fmt, ap);
@@ -90,13 +90,83 @@ int stored_model(const wchar_t* section, uint32_t garage) {
     return 0;
 }
 
+// ---- trace (Trace=1): what the game does while the shop previews a part --------------------------------------------------
+// Used to find the event for "the player is looking at this stage" and the call that makes the shop rebuild its car.
+// Everything goes to fh3-mods\platform.log (with the time), capped so the log can't run away.
+bool g_trace = true;
+char* g_game = nullptr;
+std::atomic<int> g_trace_sql{0}, g_trace_stacks{0}, g_trace_shop{0};
+
+typedef int (*PrepareFn)(void*, const char*, int, unsigned, void*, void**, const char**);
+PrepareFn g_orig_prepare = nullptr;
+typedef void* (*Fn12)(uint64_t, uint64_t, uint64_t, uint64_t, uint64_t, uint64_t, uint64_t, uint64_t, uint64_t, uint64_t, uint64_t, uint64_t);
+Fn12 g_orig_add = nullptr, g_orig_select = nullptr;
+#define ARGS12 uint64_t a, uint64_t b, uint64_t c, uint64_t d, uint64_t e, uint64_t f, uint64_t g, uint64_t h, uint64_t i, uint64_t j, uint64_t k, uint64_t l
+#define PASS12 a, b, c, d, e, f, g, h, i, j, k, l
+
+// The game's return addresses (as game+0x...) on the stack, so the log shows which code asked for this car.
+void trace_stack(const char* what, int model) {
+    if (!g_trace || !g_game || g_trace_stacks.fetch_add(1) >= 200) return;
+    void* fr[24];
+    const USHORT n = RtlCaptureStackBackTrace(0, 24, fr, nullptr);
+    std::string s;
+    char b[24];
+    for (USHORT q = 0; q < n; ++q) {
+        const uintptr_t p = reinterpret_cast<uintptr_t>(fr[q]);
+        if (p >= reinterpret_cast<uintptr_t>(g_game) && p < reinterpret_cast<uintptr_t>(g_game) + 0x5495000) {
+            std::snprintf(b, sizeof b, " +%llX", static_cast<unsigned long long>(p - reinterpret_cast<uintptr_t>(g_game)));
+            s += b;
+        }
+    }
+    say("stack %s model %d (thread %lu):%s", what, model, GetCurrentThreadId(), s.c_str());
+}
+
+// The game's statements about parts and upgrades: the hovered stage may show up as a lookup of its part id.
+void trace_sql(const char* z, int n) {
+    char buf[300];
+    size_t len = 0;
+    __try {
+        while (len < sizeof buf - 1 && z[len] && (n < 0 || static_cast<int>(len) < n)) {
+            const char ch = z[len];
+            buf[len]      = (ch == '\n' || ch == '\r' || ch == '\t') ? ' ' : ch;
+            ++len;
+        }
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+        return;
+    }
+    buf[len] = 0;
+    if (len < 12) return;
+    static const char* keys[] = {"Upgrade", "PartId", "PartEnum", "PurchasedParts", "9004", "List_Wheels", "CarBody", "Garage"};
+    bool hit = false;
+    for (const char* k : keys)
+        if (std::strstr(buf, k)) { hit = true; break; }
+    if (!hit || std::strstr(buf, "UPDATE Profile0_Career_Garage SET TopSpeed")) return;
+    if (g_trace_sql.fetch_add(1) >= 1200) return;
+    say("sql (thread %lu): %s", GetCurrentThreadId(), buf);
+}
+
+int detour_prepare(void* db, const char* z, int n, unsigned fl, void* old, void** pp, const char** tail) {
+    if (g_trace && z) trace_sql(z, n);
+    return g_orig_prepare(db, z, n, fl, old, pp, tail);
+}
+
+// The shop's "part chosen" steps: A handler 0x16DC050 (b = part enum) and the add step 0x16FAEF0 (b = part id, c = part enum).
+void* detour_select(ARGS12) {
+    if (g_trace && g_trace_shop.fetch_add(1) < 400) say("shop: A handler, enum %d (thread %lu)", static_cast<int>(b), GetCurrentThreadId());
+    return g_orig_select(PASS12);
+}
+void* detour_add(ARGS12) {
+    if (g_trace && g_trace_shop.fetch_add(1) < 400) say("shop: add step, part %d, enum %d (thread %lu)", static_cast<int>(b), static_cast<int>(c), GetCurrentThreadId());
+    return g_orig_add(PASS12);
+}
+
 void load_config() {
     wchar_t buf[64] = L"";
     GetPrivateProfileStringW(L"WheelSpacers", L"Scale", L"", buf, 64, g_cfg_path.c_str());
     if (buf[0]) g_scale = static_cast<float>(std::wcstod(buf, nullptr));
     else WritePrivateProfileStringW(L"WheelSpacers", L"Scale", L"1.0", g_cfg_path.c_str());
     const struct { const wchar_t* key; bool* value; int def; } flags[] = {
-        {L"ApplyBody", &g_apply_body, 1}, {L"ApplySpec", &g_apply_spec, 1}, {L"ApplyOffsets", &g_apply_offs, 0}, {L"Log", &g_verbose, 1}};
+        {L"ApplyBody", &g_apply_body, 1}, {L"ApplySpec", &g_apply_spec, 1}, {L"ApplyOffsets", &g_apply_offs, 0}, {L"Log", &g_verbose, 1}, {L"Trace", &g_trace, 1}};
     for (const auto& f : flags) {
         GetPrivateProfileStringW(L"WheelSpacers", f.key, L"", buf, 64, g_cfg_path.c_str());
         if (buf[0]) *f.value = std::wcstol(buf, nullptr, 10) != 0;
@@ -186,6 +256,7 @@ int spec_model(const FH3Context* ctx) {
 void on_spec_built(FH3Context* ctx, void*) {
     char* spec      = reinterpret_cast<char*>(ctx->r14);
     const int model = spec_model(ctx);
+    trace_stack("spec", model);
     if (!model) {
         if (g_verbose && g_calls.fetch_add(1) < 120) say("spec: object %p: couldn't read the Data_Car id", spec);
         return;
@@ -200,6 +271,7 @@ void on_body_built(FH3Context* ctx, void*) {
     char* car = reinterpret_cast<char*>(ctx->rsi);
     int fs, rs;
     const int model = driven_stages(car, "body", &fs, &rs);
+    trace_stack("body", model);
     if (model && g_apply_body && (fs || rs)) widen("body", car, kOffBodyFront, kOffBodyRear, model, fs, rs);
 }
 
@@ -237,6 +309,20 @@ bool hook_at(char* game, uint32_t rva, const unsigned char* bytes, size_t n, con
 DWORD WINAPI install_hooks(LPVOID) {
     char* game = static_cast<char*>(g_api->wait_for_code(0xFFFFFFFFu));
     if (!game) { say("the game's code never became ready: no hooks"); return 0; }
+    g_game = game;
+    if (g_trace) {
+        // The platform hooks these too; hooks on the same function share it, each calling on to the next.
+        const struct { uint32_t rva; void* detour; void** orig; const char* name; } fns[] = {
+            {0x440C0, reinterpret_cast<void*>(&detour_prepare), reinterpret_cast<void**>(&g_orig_prepare), "trace: SQL prepare"},
+            {0x16DC050, reinterpret_cast<void*>(&detour_select), reinterpret_cast<void**>(&g_orig_select), "trace: shop A handler"},
+            {0x16FAEF0, reinterpret_cast<void*>(&detour_add), reinterpret_cast<void**>(&g_orig_add), "trace: shop add step"},
+        };
+        for (const auto& f : fns) {
+            FH3Hook* h = g_api->hook_function(g_mod, f.name, game + f.rva, f.detour, f.orig);
+            if (h && g_api->enable_hooks(g_mod, h)) say("hooked game+0x%X (%s)", f.rva, f.name);
+            else say("couldn't hook game+0x%X (%s)", f.rva, f.name);
+        }
+    }
     hook_at(game, kSpecRva, kSpecBytes, sizeof kSpecBytes, "Car spec loaded (track outer)", &on_spec_built);
     hook_at(game, kBodyRva, kBodyBytes, sizeof kBodyBytes, "Car body built (track outer)", &on_body_built);
     hook_at(game, kOffsetsRva, kOffsetsBytes, sizeof kOffsetsBytes, "Car data built (track offsets)", &on_offsets_built);
