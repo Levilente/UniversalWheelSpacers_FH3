@@ -9,11 +9,11 @@ A mod for the [FH3 Mod Platform](https://github.com/Levilente/FH3_ModPlatform). 
 Each has the stock stage (fitted on every car by default) and the stages **+1 cm to +9 cm per wheel**, 300 CR each. The stage is
 stored per owned car, so two cars of the same model can have different spacers.
 
-> Status: version 0.2.0 moves the body track width. It was written from reading the game's code; check `fh3-mods\platform.log` (lines `body: ...`).
+> Status: works in the game (0.4.3). Needs FH3 Mod Platform 1.0.1 or newer (1.0.0 let the shop overwrite the car's tuning, which took the handbrake away); with 1.0.2 the spacer shows on the car while you look at a stage in the shop.
 
 ## Requirements
 
-- Forza Horizon 3 through Azimuth with the FH3 Mod Platform (API 11 or newer).
+- Forza Horizon 3 through Azimuth with the FH3 Mod Platform 1.0.1 or newer (1.0.2 for the shop preview).
 
 ## Install
 
@@ -34,10 +34,12 @@ Copy `WheelSpacers.dll` into the `fh3-mods` folder next to `azimuth.exe`. On the
 
 ## How it works
 
-The game builds a car's data from the database. The function that loads the car body stores `ModelFrontTrackOuter` and
-`ModelRearTrackOuter` (metres, outer tire edge to outer tire edge) at `+0x234` / `+0x238` of the car object and then hands the body
-data to the car's physics. The mod hooks the first instruction after those stores (`game+0x18BADED`) and adds twice the spacer width
-of the car being driven, which is also what a widebody kit does when it moves the wheels out.
+The game's central car loader (`game+0x19E6A80`) reads `ModelFrontTrackOuter` / `ModelRearTrackOuter` (metres, outer tire edge to
+outer tire edge) into the car spec at `+0xF4` / `+0xF8`. The mod hooks the instruction right after (`game+0x19E9027`), asks the platform
+for the car's front and rear stage (`upgrade_stage`) and adds twice the spacer width. From there the game computes the track the physics
+and the model use, so the wheels move out and the car really is wider. The loader runs every time the game builds a car, including the
+shop's car on each cursor move, which is why the stage shows on hover (platform 1.0.2). Cars other than the one in the garage slot are
+left alone (the model id is checked).
 
 ## Build
 
