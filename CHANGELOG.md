@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.0.1
+
+- Spacers now work on cars whose game id is below 1000 (84 cars, among them the Nissan Skyline GT-R V-Spec II (R34) and the older Skylines and Silvias); the mod took such ids for unreadable values and left the car alone.
+
 ## 1.0.0
 
 First release of **Universal Wheel Spacers for Forza Horizon 3**, on the [FH3 Mod Platform](https://github.com/Levilente/FH3_ModPlatform) 1.0.0 (API 12). A port of the FH2 [Universal Wheel Spacers](https://github.com/Levilente/Universal-Wheel-Spacers).
