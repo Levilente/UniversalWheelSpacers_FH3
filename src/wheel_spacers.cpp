@@ -38,6 +38,14 @@ constexpr size_t kOffBodyFront   = 0x234;
 constexpr size_t kOffBodyRear    = 0x238;
 const unsigned char kBodyBytes[] = {0x48, 0x8B, 0x8E, 0xE8, 0x71, 0x00, 0x00};
 
+// Spec hook: the central car loader (game+0x19E6A80: Data_Car, physicsdefinition.bin, Data_CarBody) stores
+// ModelFrontTrackOuter / ModelRearTrackOuter at +0xF4 / +0xF8 of the spec object it fills (r14); the Data_Car.Id it was given is saved at [rsp+0x68].
+// game+0x19E9027 is the first instruction after both stores (`lea rcx, [rbp+0x640]`).
+constexpr uint32_t kSpecRva      = 0x19E9027;
+constexpr size_t kOffSpecFront   = 0xF4;
+constexpr size_t kOffSpecRear    = 0xF8;
+const unsigned char kSpecBytes[] = {0x48, 0x8D, 0x8D, 0x40, 0x06, 0x00, 0x00};
+
 // Offsets hook: `mov rcx, [rdi+0x71E8]`, right after FrontOffset, RearOffset, UpgradeFrontOffset, UpgradeRearOffset.
 constexpr uint32_t kOffsetsRva      = 0x189F8B8;
 constexpr size_t kOffOffsets        = 0x773C;
@@ -50,7 +58,8 @@ int g_rear             = -1;
 
 // fh3-mods\WheelSpacers.ini (written with these defaults on first start).
 float g_scale       = 1.0f;   // multiplies the spacer width; -1 turns the wheels the other way if they move inwards
-bool g_apply_body   = true;   // add 2 x width to ModelFrontTrackOuter / ModelRearTrackOuter
+bool g_apply_body   = true;   // add 2 x width to ModelFrontTrackOuter / ModelRearTrackOuter (car body loader)
+bool g_apply_spec   = true;   // the same in the central car loader (the one that runs when a car is created)
 bool g_apply_offs   = false;  // add the width to the four CarTrackOffsets values as well
 bool g_verbose      = true;   // log every car the game builds (the first 80) and every change
 
@@ -87,7 +96,7 @@ void load_config() {
     if (buf[0]) g_scale = static_cast<float>(std::wcstod(buf, nullptr));
     else WritePrivateProfileStringW(L"WheelSpacers", L"Scale", L"1.0", g_cfg_path.c_str());
     const struct { const wchar_t* key; bool* value; int def; } flags[] = {
-        {L"ApplyBody", &g_apply_body, 1}, {L"ApplyOffsets", &g_apply_offs, 0}, {L"Log", &g_verbose, 1}};
+        {L"ApplyBody", &g_apply_body, 1}, {L"ApplySpec", &g_apply_spec, 1}, {L"ApplyOffsets", &g_apply_offs, 0}, {L"Log", &g_verbose, 1}};
     for (const auto& f : flags) {
         GetPrivateProfileStringW(L"WheelSpacers", f.key, L"", buf, 64, g_cfg_path.c_str());
         if (buf[0]) *f.value = std::wcstol(buf, nullptr, 10) != 0;
@@ -100,16 +109,8 @@ void on_stage(void* user, uint32_t garage, int stage) {
 }
 
 // The car being built is the player's when its model matches the one the platform recorded for the driven garage id
-// (the platform stores 2154, the game's car data holds Data_Car.Id = 2154002). Returns the car's model id, 0 if the
-// object couldn't be read; sets the fitted front and rear stages (0 for any other car).
-int driven_stages(const char* car, const char* what, int* fs, int* rs) {
-    int model = 0;
-    __try {
-        const char* info = *reinterpret_cast<char* const*>(car + kOffModelInfo);
-        model            = *reinterpret_cast<const int*>(info + kOffModelId);
-    } __except (EXCEPTION_EXECUTE_HANDLER) {
-        return 0;
-    }
+// (the platform stores 2154, the game holds Data_Car.Id = 2154002). Sets the fitted front and rear stages (0 for any other car).
+void stages_for_model(int model, const char* what, const void* obj, int* fs, int* rs) {
     *fs = *rs = 0;
     const int n           = g_calls.fetch_add(1) + 1;
     const uint32_t garage = g_api->upgrade_active_garage();
@@ -118,26 +119,41 @@ int driven_stages(const char* car, const char* what, int* fs, int* rs) {
         *rs = g_api->upgrade_stage(g_mod, g_rear, static_cast<int32_t>(garage));
         const int m = *fs > 0 ? stored_model(L"car.wheelspacers.front", garage) : *rs > 0 ? stored_model(L"car.wheelspacers.rear", garage) : 0;
         if (m > 0 && m != model && m != model / 1000) {
-            if (g_verbose && n <= 80) say("%s: object %p, model %d: not the driven car (garage %u is model %d), left alone", what, car, model, garage, m);
+            if (g_verbose && n <= 120) say("%s: object %p, model %d: not the driven car (garage %u is model %d), left alone", what, obj, model, garage, m);
             *fs = *rs = 0;
-        } else if (g_verbose && n <= 80 && !*fs && !*rs) {
-            say("%s: object %p, model %d, driven garage %u: no spacers", what, car, model, garage);
+            return;
         }
     }
+    if (g_verbose && n <= 120 && !*fs && !*rs) say("%s: object %p, model %d, driven garage %u: no spacers", what, obj, model, garage);
+}
+
+// The model id of a car object (the game's car data), 0 if it can't be read.
+int car_model(const char* car) {
+    __try {
+        const char* info = *reinterpret_cast<char* const*>(car + kOffModelInfo);
+        return *reinterpret_cast<const int*>(info + kOffModelId);
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+        return 0;
+    }
+}
+
+int driven_stages(const char* car, const char* what, int* fs, int* rs) {
+    const int model = car_model(car);
+    if (!model) {
+        if (g_verbose && g_calls.fetch_add(1) < 120) say("%s: object %p: couldn't read its model id", what, car);
+        *fs = *rs = 0;
+        return 0;
+    }
+    stages_for_model(model, what, car, fs, rs);
     return model;
 }
 
-// Runs on the game's thread every time the game loads a car's body data. rsi is the car object.
-void on_body_built(FH3Context* ctx, void*) {
-    const char* car = reinterpret_cast<const char*>(ctx->rsi);
-    int fs, rs;
-    const int model = driven_stages(car, "body", &fs, &rs);
-    if (!model || (!fs && !rs)) return;
-    if (!g_apply_body) return;
+// Adds 2 x the spacer width to two track outer floats (front, rear) of an object; logs the change.
+void widen(const char* what, char* base, size_t off_front, size_t off_rear, int model, int fs, int rs) {
     float before[2] = {}, after[2] = {};
     __try {
-        float* f = reinterpret_cast<float*>(const_cast<char*>(car) + kOffBodyFront);
-        float* r = reinterpret_cast<float*>(const_cast<char*>(car) + kOffBodyRear);
+        float* f = reinterpret_cast<float*>(base + off_front);
+        float* r = reinterpret_cast<float*>(base + off_rear);
         before[0] = *f;
         before[1] = *r;
         *f += 2.0f * fs * 0.01f * g_scale;
@@ -148,8 +164,43 @@ void on_body_built(FH3Context* ctx, void*) {
         return;
     }
     if (g_verbose)
-        say("body: object %p, model %d: front +%d cm, rear +%d cm; track outer front %.4f -> %.4f, rear %.4f -> %.4f", car, model, fs, rs,
+        say("%s: object %p, model %d: front +%d cm, rear +%d cm; track outer front %.4f -> %.4f, rear %.4f -> %.4f", what, base, model, fs, rs,
             before[0], after[0], before[1], after[1]);
+}
+
+// Runs every time the central car loader has stored a car's track outer values. r14 is the spec object.
+// The Data_Car.Id the loader was given: it saves it at [rsp+0x68] at entry (r12 is reused later in the function); the
+// pointer it was passed is the fallback (the home slot of r8, [rbp+0xE70]).
+int spec_model(const FH3Context* ctx) {
+    __try {
+        const int a = *reinterpret_cast<const int*>(ctx->rsp + 0x68);
+        if (a > 1000 && a < 100000000) return a;
+        const int* p = *reinterpret_cast<int* const*>(ctx->rbp + 0xE70);
+        const int b  = *p;
+        if (b > 1000 && b < 100000000) return b;
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+    }
+    return 0;
+}
+
+void on_spec_built(FH3Context* ctx, void*) {
+    char* spec      = reinterpret_cast<char*>(ctx->r14);
+    const int model = spec_model(ctx);
+    if (!model) {
+        if (g_verbose && g_calls.fetch_add(1) < 120) say("spec: object %p: couldn't read the Data_Car id", spec);
+        return;
+    }
+    int fs, rs;
+    stages_for_model(model, "spec", spec, &fs, &rs);
+    if (g_apply_spec && (fs || rs)) widen("spec", spec, kOffSpecFront, kOffSpecRear, model, fs, rs);
+}
+
+// Runs on the game's thread every time the game loads a car's body data. rsi is the car object.
+void on_body_built(FH3Context* ctx, void*) {
+    char* car = reinterpret_cast<char*>(ctx->rsi);
+    int fs, rs;
+    const int model = driven_stages(car, "body", &fs, &rs);
+    if (model && g_apply_body && (fs || rs)) widen("body", car, kOffBodyFront, kOffBodyRear, model, fs, rs);
 }
 
 // Runs every time the game stores a car's four CarTrackOffsets values. rdi is the car object.
@@ -186,6 +237,7 @@ bool hook_at(char* game, uint32_t rva, const unsigned char* bytes, size_t n, con
 DWORD WINAPI install_hooks(LPVOID) {
     char* game = static_cast<char*>(g_api->wait_for_code(0xFFFFFFFFu));
     if (!game) { say("the game's code never became ready: no hooks"); return 0; }
+    hook_at(game, kSpecRva, kSpecBytes, sizeof kSpecBytes, "Car spec loaded (track outer)", &on_spec_built);
     hook_at(game, kBodyRva, kBodyBytes, sizeof kBodyBytes, "Car body built (track outer)", &on_body_built);
     hook_at(game, kOffsetsRva, kOffsetsBytes, sizeof kOffsetsBytes, "Car data built (track offsets)", &on_offsets_built);
     return 0;
@@ -240,7 +292,7 @@ FH3MOD_EXPORT int fh3mod_init(const FH3ModApi* api) {
 
     g_front = add_upgrade(0);
     g_rear  = add_upgrade(1);
-    say("registered: front handle %d, rear handle %d (scale %.2f, body %d, offsets %d)", g_front, g_rear, g_scale, g_apply_body, g_apply_offs);
+    say("registered: front handle %d, rear handle %d (scale %.2f, spec %d, body %d, offsets %d)", g_front, g_rear, g_scale, g_apply_spec, g_apply_body, g_apply_offs);
     if (g_front < 0 || g_rear < 0) return 1;
 
     if (HANDLE t = CreateThread(nullptr, 0, install_hooks, nullptr, 0, nullptr)) CloseHandle(t);
