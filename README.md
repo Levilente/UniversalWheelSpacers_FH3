@@ -9,16 +9,26 @@ A mod for the [FH3 Mod Platform](https://github.com/Levilente/FH3_ModPlatform). 
 Each has the stock stage (fitted on every car by default) and the stages **+1 cm to +9 cm per wheel**, 300 CR each. The stage is
 stored per owned car, so two cars of the same model can have different spacers.
 
-> Works in the game. Needs FH3 Mod Platform 1.0.0 (API 12) from 6 Nov 2026 or newer: the shop preview, the basket and the wheel camera come from it.
+![Garage > Upgrades > Tires and Rims > Front Spacers](docs/images/front-spacers-menu.jpg)
+![A +4 cm front spacer in the shop: the stage is shown on the car, 300 CR](docs/images/front-spacers-stage.jpg)
+![Rear Spacers: the camera moves to the rear wheel](docs/images/rear-spacers-stage.jpg)
+![The wider track on the road](docs/images/spacers-in-game.jpg)
+
+> Version **1.0.0**. Needs the FH3 Mod Platform **1.0.0** (API 12) or newer: the shop preview, the basket, the wheel camera and the shop's own credit check for upgrades come from it.
 
 ## Requirements
 
-- Forza Horizon 3 through Azimuth with the FH3 Mod Platform 1.0.0 (API 12) or newer.
+- Forza Horizon 3 (Xbox One build 1.0.125.0) through Azimuth, with the [FH3 Mod Platform](https://github.com/Levilente/FH3_ModPlatform) 1.0.0 (API 12) or newer. If another platform-based mod already runs for you, you have it.
 
 ## Install
 
-Copy `WheelSpacers.dll` into the `fh3-mods` folder next to `azimuth.exe`. On the first start the mod writes
-`fh3-mods\WheelSpacers.ini`.
+Download `WheelSpacers.dll` from the [latest release](../../releases/latest) and copy it into the `fh3-mods` folder next to `azimuth.exe` (the platform
+makes the folder). On the first start the mod writes `fh3-mods\WheelSpacers.ini`. Open a car in the garage: **Upgrades > Tires and Rims > Front Spacers / Rear Spacers**.
+The platform's *Installed mods* page (**Home > MODS**) lists the mod and checks this repository for new releases.
+
+## Uninstalling
+
+Close the game, delete `fh3-mods\WheelSpacers.dll` (and `WheelSpacers.ini`). The cars go back to their stock track; the stages you bought are kept by the platform and come back if you reinstall the mod.
 
 ## Settings (`fh3-mods\WheelSpacers.ini`)
 
@@ -30,6 +40,7 @@ Copy `WheelSpacers.dll` into the `fh3-mods` folder next to `azimuth.exe`. On the
 ## In the shop
 
 - The cursor on a stage shows it on the car before it is bought; a stage in the basket stays on the car until the setup is installed or abandoned.
+- A stage you already own goes into the basket at 0 CR (like the game's own parts), and the shop's usual "not enough credits" message appears when the basket costs more than you have.
 - The camera goes to the front wheel in Front Spacers and to the rear wheel in Rear Spacers, as it does for rim size.
 
 ## How it works
@@ -70,3 +81,7 @@ The result is `build/WheelSpacers.dll` (llvm-mingw, see the platform's `docs/wri
 ## Limits
 
 - The upgrade bridge allows 10 stages per upgrade, so stock plus +1 to +9 cm.
+
+## Changelog and releases
+
+See [CHANGELOG.md](CHANGELOG.md). [RELEASING.md](RELEASING.md) describes how a release is made.

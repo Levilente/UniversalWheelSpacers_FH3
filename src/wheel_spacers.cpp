@@ -255,7 +255,7 @@ FH3MOD_EXPORT int fh3mod_init(const FH3ModApi* api) {
     info.version          = WHEELSPACERS_VERSION;
     info.github_repo      = "Levilente/UniversalWheelSpacers_FH3";
     info.platform_version = FH3MOD_PLATFORM_VERSION;
-    info.check_updates    = 0;
+    info.check_updates    = 1;
     info.description      = "Front and rear wheel spacers for every car: +1 to +9 cm per wheel from Garage > Upgrades > Tires and Rims.";
     info.offline_only     = 1;
     g_mod                 = api->register_mod(&info);
