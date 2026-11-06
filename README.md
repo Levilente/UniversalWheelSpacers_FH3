@@ -29,6 +29,7 @@ Copy `WheelSpacers.dll` into the `fh3-mods` folder next to `azimuth.exe`. On the
 | `ApplyOffsets` | `0` | Also add the width to the four `CarTrackOffsets` values (the game doesn't seem to use them for the wheels). |
 | `Log` | `1` | Log every car the game builds to `fh3-mods\platform.log`. |
 | `Trace` | `1` | Diagnostics for the shop preview work: logs SQL statements about upgrades, the shop's A / add steps and the game's call stack for every car it builds (capped). |
+| `Register` | `1` | Test switch: `0` loads the DLL but registers no upgrades and installs no hooks. |
 | `TraceShopHooks` | `0` | Also hook the shop functions the platform hooks (SQL prepare, A handler, add step). Off by default: with it on, the spacer upgrades vanished from the menu. |
 
 ## How it works
