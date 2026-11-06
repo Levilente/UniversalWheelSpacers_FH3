@@ -14,7 +14,7 @@ stored per owned car, so two cars of the same model can have different spacers.
 ![Rear Spacers: the camera moves to the rear wheel](docs/images/rear-spacers-stage.jpg)
 ![The wider track on the road](docs/images/spacers-in-game.jpg)
 
-> Version **1.0.0**. Needs the FH3 Mod Platform **1.0.0** (API 12) or newer: the shop preview, the basket, the wheel camera and the shop's own credit check for upgrades come from it.
+> Version **1.0.1**. Needs the FH3 Mod Platform **1.0.0** (API 12) or newer: the shop preview, the basket, the wheel camera and the shop's own credit check for upgrades come from it.
 
 ## Requirements
 
