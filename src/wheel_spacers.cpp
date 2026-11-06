@@ -58,7 +58,7 @@ int g_rear             = -1;
 
 // fh3-mods\WheelSpacers.ini (written with these defaults on first start).
 float g_scale       = 1.0f;   // multiplies the spacer width; -1 turns the wheels the other way if they move inwards
-bool g_apply_body   = true;   // add 2 x width to ModelFrontTrackOuter / ModelRearTrackOuter (car body loader)
+bool g_apply_body   = false;   // add 2 x width to ModelFrontTrackOuter / ModelRearTrackOuter (car body loader)
 bool g_apply_spec   = true;   // the same in the central car loader (the one that runs when a car is created)
 bool g_apply_offs   = false;  // add the width to the four CarTrackOffsets values as well
 bool g_verbose      = true;   // log every car the game builds (the first 80) and every change
