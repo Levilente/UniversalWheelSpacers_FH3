@@ -168,7 +168,7 @@ void load_config() {
     if (buf[0]) g_scale = static_cast<float>(std::wcstod(buf, nullptr));
     else WritePrivateProfileStringW(L"WheelSpacers", L"Scale", L"1.0", g_cfg_path.c_str());
     const struct { const wchar_t* key; bool* value; int def; } flags[] = {
-        {L"ApplyBody", &g_apply_body, 1}, {L"ApplySpec", &g_apply_spec, 1}, {L"ApplyOffsets", &g_apply_offs, 0}, {L"Log", &g_verbose, 1}, {L"Trace", &g_trace, 1}, {L"TraceShopHooks", &g_trace_fns, 0}, {L"Register", &g_register, 1}};
+        {L"ApplyBody", &g_apply_body, 0}, {L"ApplySpec", &g_apply_spec, 1}, {L"ApplyOffsets", &g_apply_offs, 0}, {L"Log", &g_verbose, 1}, {L"Trace", &g_trace, 1}, {L"TraceShopHooks", &g_trace_fns, 0}, {L"Register", &g_register, 1}};
     for (const auto& f : flags) {
         GetPrivateProfileStringW(L"WheelSpacers", f.key, L"", buf, 64, g_cfg_path.c_str());
         if (buf[0]) *f.value = std::wcstol(buf, nullptr, 10) != 0;
