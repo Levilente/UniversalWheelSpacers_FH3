@@ -94,6 +94,7 @@ int stored_model(const wchar_t* section, uint32_t garage) {
 // Used to find the event for "the player is looking at this stage" and the call that makes the shop rebuild its car.
 // Everything goes to fh3-mods\platform.log (with the time), capped so the log can't run away.
 bool g_trace = true;
+bool g_trace_fns = false;  // hooks on the shop functions the platform hooks too: off by default (0.4.0 made the upgrades vanish from the menu)
 char* g_game = nullptr;
 std::atomic<int> g_trace_sql{0}, g_trace_stacks{0}, g_trace_shop{0};
 
@@ -166,7 +167,7 @@ void load_config() {
     if (buf[0]) g_scale = static_cast<float>(std::wcstod(buf, nullptr));
     else WritePrivateProfileStringW(L"WheelSpacers", L"Scale", L"1.0", g_cfg_path.c_str());
     const struct { const wchar_t* key; bool* value; int def; } flags[] = {
-        {L"ApplyBody", &g_apply_body, 1}, {L"ApplySpec", &g_apply_spec, 1}, {L"ApplyOffsets", &g_apply_offs, 0}, {L"Log", &g_verbose, 1}, {L"Trace", &g_trace, 1}};
+        {L"ApplyBody", &g_apply_body, 1}, {L"ApplySpec", &g_apply_spec, 1}, {L"ApplyOffsets", &g_apply_offs, 0}, {L"Log", &g_verbose, 1}, {L"Trace", &g_trace, 1}, {L"TraceShopHooks", &g_trace_fns, 0}};
     for (const auto& f : flags) {
         GetPrivateProfileStringW(L"WheelSpacers", f.key, L"", buf, 64, g_cfg_path.c_str());
         if (buf[0]) *f.value = std::wcstol(buf, nullptr, 10) != 0;
@@ -310,7 +311,7 @@ DWORD WINAPI install_hooks(LPVOID) {
     char* game = static_cast<char*>(g_api->wait_for_code(0xFFFFFFFFu));
     if (!game) { say("the game's code never became ready: no hooks"); return 0; }
     g_game = game;
-    if (g_trace) {
+    if (g_trace && g_trace_fns) {
         // The platform hooks these too; hooks on the same function share it, each calling on to the next.
         const struct { uint32_t rva; void* detour; void** orig; const char* name; } fns[] = {
             {0x440C0, reinterpret_cast<void*>(&detour_prepare), reinterpret_cast<void**>(&g_orig_prepare), "trace: SQL prepare"},
