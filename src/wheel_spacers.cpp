@@ -109,8 +109,12 @@ void on_car_built(FH3Context* ctx, void*) {
         fs = g_api->upgrade_stage(g_mod, g_front, static_cast<int32_t>(garage));
         rs = g_api->upgrade_stage(g_mod, g_rear, static_cast<int32_t>(garage));
         // Only the player's car: the model id the platform recorded for that garage id has to match this car's.
+        // The platform stores the model number (2154), the game's car data holds Data_Car.Id (2154002 = model * 1000 + variant).
         const int m = fs > 0 ? stored_model(L"car.wheelspacers.front", garage) : rs > 0 ? stored_model(L"car.wheelspacers.rear", garage) : 0;
-        if (m > 0 && m != model) fs = rs = 0;
+        if (m > 0 && m != model && m != model / 1000) {
+            if (g_verbose && n <= 60) say("car built: object %p, model %d: not the driven car (garage %u is model %d), left alone", car, model, garage, m);
+            fs = rs = 0;
+        }
     }
     const float fd = fs * 0.01f * g_scale, rd = rs * 0.01f * g_scale;
     if (fd == 0.0f && rd == 0.0f) {

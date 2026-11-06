@@ -9,7 +9,7 @@ A mod for the [FH3 Mod Platform](https://github.com/Levilente/FH3_ModPlatform). 
 Each has the stock stage (fitted on every car by default) and the stages **+1 cm to +9 cm per wheel**, 300 CR each. The stage is
 stored per owned car, so two cars of the same model can have different spacers.
 
-> Status: version 0.1.0 is the first build. It was written from reading the game's code and has not been run in the game yet.
+> Status: version 0.1.1 is the first build that applies the width. It was written from reading the game's code and has not been run in the game yet.
 
 ## Requirements
 
