@@ -2,7 +2,7 @@
 
 ## 1.0.1
 
-- A car chosen at an event's car select gets its spacers (it was taken for another car until the game saved it as the driven car, and kept no spacers until a spacer was changed in the garage; needs platform API 14). Any of your own cars keeps its spacers; only cars that aren't yours (loaners, AI cars) get none.
+- Spacers only on your own cars, decided by the platform for every car the game builds (needs platform API 14): a car chosen at an event's car select gets its spacers from the start (it was taken for another car and kept none until a spacer was changed in the garage), and AI cars of the same model (a one-make race) and loaners get none (before, every car of your model got your spacers).
 - Spacers now work on cars whose game id is below 1000 (84 cars, among them the Nissan Skyline GT-R V-Spec II (R34) and the older Skylines and Silvias); the mod took such ids for unreadable values and left the car alone.
 
 ## 1.0.0

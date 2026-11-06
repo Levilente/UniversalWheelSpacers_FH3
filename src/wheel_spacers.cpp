@@ -97,18 +97,12 @@ void stages_for_model(int model, const char* what, const void* obj, int* fs, int
     *fs = *rs = 0;
     const int n           = g_calls.fetch_add(1) + 1;
     uint32_t garage = g_api->upgrade_active_garage();
-    if (g_api->api_version >= 14 && g_api->upgrade_garage_for_car) {
-        // Which of the player's cars is this? The driven garage id can lag behind a car switch (an event's car select
-        // builds the chosen car seconds before the game saves it as driven); the platform answers by the car's model.
-        const int32_t g = g_api->upgrade_garage_for_car(model, FH3MOD_CAR_MAKE_DRIVEN);
-        if (g <= 0) {
-            if (g_verbose && n <= 200) say("%s: object %p, model %d: none of the player's cars (driven garage %u), left alone", what, obj, model, garage);
-            return;
-        }
-        garage = static_cast<uint32_t>(g);
-        *fs = g_api->upgrade_stage(g_mod, g_front, g);
-        *rs = g_api->upgrade_stage(g_mod, g_rear, g);
-        if (g_verbose && n <= 200) say("%s: object %p, model %d is garage car %u: front +%d, rear +%d", what, obj, model, garage, *fs, *rs);
+    if (g_api->api_version >= 14 && g_api->upgrade_stage_for_car) {
+        // The platform decides whose car this is (the player's car of that model, not an AI car of the same model in a
+        // one-make race, not a loaner) and gives the shop's preview stage; see the platform's docs/car-mods.md.
+        *fs = g_api->upgrade_stage_for_car(g_mod, g_front, model);
+        *rs = g_api->upgrade_stage_for_car(g_mod, g_rear, model);
+        if (g_verbose && n <= 200) say("%s: object %p, model %d: front +%d, rear +%d", what, obj, model, *fs, *rs);
         return;
     }
     if (garage) {
