@@ -41,6 +41,22 @@ and the model use, so the wheels move out and the car really is wider. The loade
 shop's car on each cursor move, which is why the stage shows on hover (platform 1.0.2). Cars other than the one in the garage slot are
 left alone (the model id is checked).
 
+## Icons
+
+The upgrade tiles use the spacer icons of the FH2 [Universal Wheel Spacers](https://github.com/Levilente/Universal-Wheel-Spacers):
+`icons/front.png` and `icons/rear.png` for the two upgrade types, `icons/spacer.png` for the +1 to +9 cm stages (Stock keeps the
+game's stock icon; the large picture is the game's Tires and Rims one). They are 200 x 200 RGBA PNGs. To change one, replace the PNG
+and run
+
+```sh
+pip install pillow numpy
+python3 scripts/gen_icons.py --prefix uws
+```
+
+which writes `src/icon_data.h` (the icons as FH3 `.swatchbin`, packed into the DLL); then rebuild. At start the mod hands them to the
+game with the platform's `set_file` as `Upgrade_Parts\Custom\uws_<slot>_Icon.swatchbin`; no game file is changed. The converter
+(`scripts/icontools/`) comes from NitroSystem II for FH3.
+
 ## Build
 
 ```sh

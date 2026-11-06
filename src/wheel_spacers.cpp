@@ -25,6 +25,9 @@
 #include <string>
 #include <vector>
 
+#include "icon_data.h"   // icons/*.png as FH3 .swatchbin (scripts/gen_icons.py)
+#include "icon_pack.h"
+
 namespace {
 
 constexpr int kStages          = 10;   // stage 0 (stock) + 1..9 cm: the upgrade bridge allows 10 stages at most
@@ -331,15 +334,48 @@ DWORD WINAPI install_hooks(LPVOID) {
     return 0;
 }
 
+// The icons in icons/ are handed to the game as Upgrade_Parts\Custom\uws_<slot>_Icon.swatchbin (platform set_file).
+const char kIconDir[]   = "GAME:\\Media\\UI\\Textures\\Data_Bound\\Upgrade_Parts\\";
+const char kLargeIcon[] = "GAME:\\Media\\UI\\Textures\\Data_Bound\\Upgrade_Parts\\Tire_Rims\\tires_rims_LG_Icon.swatchbin";
+std::string g_icon_paths[3];   // front, rear, spacer
+
+void install_icons() {
+    if (g_api->api_version < 2 || !g_api->set_file) return;
+    static const char base[] = "ui/textures/data_bound/Upgrade_Parts/";
+    int ok = 0, total = 0;
+    for (const IconEntry* e = k_icons; e->slot; e++) {
+        char path[200];
+        int n = 0;
+        for (int i = 0; base[i]; i++) path[n++] = base[i];
+        icon_name(e, path + n, '/');
+        const unsigned size = icon_unpack(e, g_icon_buf);
+        ++total;
+        if (g_api->set_file(g_mod, path, g_icon_buf, size)) ++ok;
+    }
+    say("icons handed to the game: %d/%d", ok, total);
+}
+
+// The game path of one of our icons, or nullptr (the platform then uses the game's own).
+const char* icon_path(int which, const char* slot) {
+    if (!icon_has(slot, 0)) return nullptr;
+    IconEntry e{slot, 0, nullptr, 0};
+    char nm[160];
+    icon_name(&e, nm, '\\');
+    g_icon_paths[which] = std::string(kIconDir) + nm;
+    return g_icon_paths[which].c_str();
+}
+
 int add_upgrade(int side) {   // 0 front, 1 rear
     const wchar_t* axle = side ? L"rear" : L"front";
+    const char* stage_icon = icon_path(2, "spacer");
     g_names[side].resize(kStages);
     g_descs[side].resize(kStages);
     for (int i = 0; i < kStages; ++i) {
         g_names[side][i] = i == 0 ? L"Stock" : L"+" + wnum(i) + L" cm Wheel Spacer";
         g_descs[side][i] = i == 0 ? std::wstring(L"The standard ") + axle + L" track width."
                                   : std::wstring(L"Moves each ") + axle + L" wheel " + wnum(i) + L" cm further out.";
-        g_stage_defs[side][i] = {g_names[side][i].c_str(), g_descs[side][i].c_str(), kPrice, nullptr, nullptr};
+        g_stage_defs[side][i] = {g_names[side][i].c_str(), g_descs[side][i].c_str(), kPrice, i == 0 ? nullptr : stage_icon,
+                                 i == 0 ? nullptr : (stage_icon ? kLargeIcon : nullptr)};
     }
     FH3UpgradeDef d{};
     d.size           = sizeof d;
@@ -348,6 +384,8 @@ int add_upgrade(int side) {   // 0 front, 1 rear
     d.description    = side ? L"Wheel spacers for the rear axle: a wider rear track."
                             : L"Wheel spacers for the front axle: a wider front track.";
     d.area           = 4;   // Tires and rims
+    d.icon           = icon_path(side, side ? "rear" : "front");
+    d.icon_large     = d.icon ? kLargeIcon : nullptr;
     d.stage_count    = kStages;
     d.stages         = g_stage_defs[side];
     d.on_stage       = on_stage;
@@ -379,6 +417,7 @@ FH3MOD_EXPORT int fh3mod_init(const FH3ModApi* api) {
     load_config();
     if (!g_register) { say("Register=0: nothing registered, nothing hooked (test mode)"); return 0; }
 
+    install_icons();
     g_front = add_upgrade(0);
     g_rear  = add_upgrade(1);
     say("registered: front handle %d, rear handle %d (scale %.2f, spec %d, body %d, offsets %d)", g_front, g_rear, g_scale, g_apply_spec, g_apply_body, g_apply_offs);
