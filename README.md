@@ -85,3 +85,7 @@ The result is `build/WheelSpacers.dll` (llvm-mingw, see the platform's `docs/wri
 ## Changelog and releases
 
 See [CHANGELOG.md](CHANGELOG.md). [RELEASING.md](RELEASING.md) describes how a release is made.
+
+## License
+
+MIT, see [LICENSE](LICENSE). Written from scratch for Forza Horizon 3 (the game was reverse engineered to find out how the upgrade shop works); it is not based on the code of any other mod.
