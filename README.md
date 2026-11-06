@@ -9,11 +9,11 @@ A mod for the [FH3 Mod Platform](https://github.com/Levilente/FH3_ModPlatform). 
 Each has the stock stage (fitted on every car by default) and the stages **+1 cm to +9 cm per wheel**, 300 CR each. The stage is
 stored per owned car, so two cars of the same model can have different spacers.
 
-> Status: works in the game (0.4.3). Needs FH3 Mod Platform 1.0.1 or newer (1.0.0 let the shop overwrite the car's tuning, which took the handbrake away); with 1.0.2 the spacer shows on the car while you look at a stage in the shop.
+> Works in the game. Needs FH3 Mod Platform 1.0.0 (API 12) from 6 Nov 2026 or newer: the shop preview, the basket and the wheel camera come from it.
 
 ## Requirements
 
-- Forza Horizon 3 through Azimuth with the FH3 Mod Platform 1.0.1 or newer (1.0.2 for the shop preview).
+- Forza Horizon 3 through Azimuth with the FH3 Mod Platform 1.0.0 (API 12) or newer.
 
 ## Install
 
@@ -24,13 +24,13 @@ Copy `WheelSpacers.dll` into the `fh3-mods` folder next to `azimuth.exe`. On the
 
 | Key | Default | Meaning |
 |---|---|---|
-| `Scale` | `1.0` | Multiplies the spacer width. Use `-1` if the wheels move inwards. |
-| `ApplyBody` | `0` | Off by default: with it on the handbrake stopped working. Add twice the spacer width to the car body's `ModelFrontTrackOuter` / `ModelRearTrackOuter` (this is what moves the wheels). |
-| `ApplyOffsets` | `0` | Also add the width to the four `CarTrackOffsets` values (the game doesn't seem to use them for the wheels). |
-| `Log` | `1` | Log every car the game builds to `fh3-mods\platform.log`. |
-| `Trace` | `1` | Diagnostics for the shop preview work: logs SQL statements about upgrades, the shop's A / add steps and the game's call stack for every car it builds (capped). |
-| `Register` | `1` | Test switch: `0` loads the DLL but registers no upgrades and installs no hooks. |
-| `TraceShopHooks` | `0` | Also hook the shop functions the platform hooks (SQL prepare, A handler, add step). Off by default: with it on, the spacer upgrades vanished from the menu. |
+| `Scale` | `1.0` | Multiplies the spacer width (1 cm per stage per wheel). |
+| `DebugLog` | `0` | `1` logs the cars the game builds and what the mod changed to `fh3-mods\platform.log` (for bug reports). |
+
+## In the shop
+
+- The cursor on a stage shows it on the car before it is bought; a stage in the basket stays on the car until the setup is installed or abandoned.
+- The camera goes to the front wheel in Front Spacers and to the rear wheel in Rear Spacers, as it does for rim size.
 
 ## How it works
 
