@@ -140,10 +140,10 @@ void widen(const char* what, char* base, size_t off_front, size_t off_rear, int 
 int spec_model(const FH3Context* ctx) {
     __try {
         const int a = *reinterpret_cast<const int*>(ctx->rsp + 0x68);
-        if (a > 1000 && a < 100000000) return a;
+        if (a >= 100 && a < 100000000) return a;   // Data_Car ids start at 249 (84 cars are below 1000)
         const int* p = *reinterpret_cast<int* const*>(ctx->rbp + 0xE70);
         const int b  = *p;
-        if (b > 1000 && b < 100000000) return b;
+        if (b >= 100 && b < 100000000) return b;
     } __except (EXCEPTION_EXECUTE_HANDLER) {
     }
     return 0;
