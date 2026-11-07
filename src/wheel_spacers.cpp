@@ -176,7 +176,7 @@ bool hook_at(char* game, uint32_t rva, const unsigned char* bytes, size_t n, con
     }
     FH3Hook* h = g_api->hook_instruction(g_mod, name, game + rva, fn, nullptr);
     if (h && g_api->enable_hooks(g_mod, h)) {
-        say("hooked game+0x%X (%s)", rva, name);
+        if (g_verbose) say("hooked game+0x%X (%s)", rva, name);
         return true;
     }
     say("couldn't hook game+0x%X (%s); see the platform's lines above", rva, name);
@@ -208,7 +208,7 @@ void install_icons() {
         ++total;
         if (g_api->set_file(g_mod, path, g_icon_buf, size)) ++ok;
     }
-    say("icons handed to the game: %d/%d", ok, total);
+    if (g_verbose) say("icons handed to the game: %d/%d", ok, total);
 }
 
 // The game path of one of our icons, or nullptr (the platform then uses the game's own).
@@ -276,7 +276,7 @@ FH3MOD_EXPORT int fh3mod_init(const FH3ModApi* api) {
     install_icons();
     g_front = add_upgrade(0);
     g_rear  = add_upgrade(1);
-    say("registered: front handle %d, rear handle %d (scale %.2f)", g_front, g_rear, g_scale);
+    if (g_verbose) say("registered: front handle %d, rear handle %d (scale %.2f)", g_front, g_rear, g_scale);
     if (g_front < 0 || g_rear < 0) return 1;
 
     if (HANDLE t = CreateThread(nullptr, 0, install_hooks, nullptr, 0, nullptr)) CloseHandle(t);

@@ -11,4 +11,4 @@ First release of **Universal Wheel Spacers for Forza Horizon 3**, on the [FH3 Mo
 - Spacers only on your own cars, decided by the platform for every car the game builds: a car chosen at an event's car select has its spacers from the start; AI cars of the same model (one-make races), showcase cars and loaners get none.
 - Works on every car, including the 84 whose game id is below 1000 (the Nissan Skyline GT-R V-Spec II (R34), the older Skylines and Silvias).
 - Spacer icons from the FH2 mod, handed to the game with the platform's `set_file` (no game file is changed).
-- `fh3-mods\WheelSpacers.ini`: `Scale` (spacer width multiplier) and `DebugLog`.
+- `fh3-mods\WheelSpacers.ini`: `Scale` (spacer width multiplier) and `DebugLog` (off by default: only problems are logged).
