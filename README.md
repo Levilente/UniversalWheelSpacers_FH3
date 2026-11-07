@@ -7,18 +7,18 @@ A mod for the [FH3 Mod Platform](https://github.com/Levilente/FH3_ModPlatform). 
 - **Rear Spacers**
 
 Each has the stock stage (fitted on every car by default) and the stages **+1 cm to +9 cm per wheel**, 300 CR each. The stage is
-stored per owned car, so two cars of the same model can have different spacers.
+stored per owned car, so two cars of the same model can have different spacers. Only your own cars get them: AI cars of the same model (one-make races), showcase cars and loaners keep their stock track.
 
 ![Garage > Upgrades > Tires and Rims > Front Spacers](docs/images/front-spacers-menu.jpg)
 ![A +4 cm front spacer in the shop: the stage is shown on the car, 300 CR](docs/images/front-spacers-stage.jpg)
 ![Rear Spacers: the camera moves to the rear wheel](docs/images/rear-spacers-stage.jpg)
 ![The wider track on the road](docs/images/spacers-in-game.jpg)
 
-> Version **1.0.1**. Needs the FH3 Mod Platform **1.0.0** (API 12) or newer: the shop preview, the basket, the wheel camera and the shop's own credit check for upgrades come from it.
+> Version **1.0.0**. Needs the FH3 Mod Platform **1.0.0** or newer: the shop preview, the basket, the wheel camera and the shop's own credit check for upgrades come from it.
 
 ## Requirements
 
-- Forza Horizon 3 (Xbox One build 1.0.125.0) through Azimuth, with the [FH3 Mod Platform](https://github.com/Levilente/FH3_ModPlatform) 1.0.0 (API 12) or newer. If another platform-based mod already runs for you, you have it.
+- Forza Horizon 3 (Xbox One build 1.0.125.0) through Azimuth, with the [FH3 Mod Platform](https://github.com/Levilente/FH3_ModPlatform) 1.0.0 or newer. If another platform-based mod already runs for you, you have it.
 
 ## Install
 
@@ -47,10 +47,11 @@ Close the game, delete `fh3-mods\WheelSpacers.dll` (and `WheelSpacers.ini`). The
 
 The game's central car loader (`game+0x19E6A80`) reads `ModelFrontTrackOuter` / `ModelRearTrackOuter` (metres, outer tire edge to
 outer tire edge) into the car spec at `+0xF4` / `+0xF8`. The mod hooks the instruction right after (`game+0x19E9027`), asks the platform
-for the car's front and rear stage (`upgrade_stage`) and adds twice the spacer width. From there the game computes the track the physics
-and the model use, so the wheels move out and the car really is wider. The loader runs every time the game builds a car, including the
-shop's car on each cursor move, which is why the stage shows on hover (platform 1.0.2). Cars other than the one in the garage slot are
-left alone (the model id is checked).
+for the car's front and rear stage (`upgrade_stage_for_car`, with the car's Data_Car id) and adds twice the spacer width. From there the game
+computes the track the physics and the model use, so the wheels move out and the car really is wider. The loader runs every time the game
+builds a car, including the shop's car on each cursor move, which is why the stage shows on hover. The platform decides whose car is being
+built: the player's car of that model gets its stages, an AI car of the same model or a car the player doesn't own gets 0 (see the
+platform's [docs/car-mods.md](https://github.com/Levilente/FH3_ModPlatform/blob/main/docs/car-mods.md)).
 
 ## Icons
 
